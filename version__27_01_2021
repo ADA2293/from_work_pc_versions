@@ -1,0 +1,430 @@
+#include "config.h"
+#include "OsTickIrq.h"
+#include "uart.h"
+#include "xtime_l.h"
+#include "signals.h"
+#include "sleep.h"
+
+
+
+
+union SIGNAL
+	{
+	SIGSELECT							sig_no;
+	struct START_SIGNAL_STRUCT			StartSig;
+	};
+
+static S32 XGpioPs_device_driver_setup(XGpioPs *GpioInstancePtr, U16 DeviceId);
+static S32 ScuWdtSetup(XScuWdt * WdtInstancePtr, U16 DeviceId);
+//static S32 input_pin_interrupt(XScuGic *GicInstancePtr, XGpioPs *Gpio, U16 GpioIntrId);
+int IntrHandlerInputPin(XScuGic *GicInstancePtr, XGpioPs *Gpio, U16 GpioIntrId);
+
+void main_task(void);
+void idle_led(void);
+//static void IntrHandler(void *CallBackRef, U32 Bank, U32 Status);
+//void IntrHandler(void *CallBackReff);
+void IntrHandler(void);
+
+U32 UserErrorHandler (U32 *Ptr);
+U32 UserSwapHandler (PCB_STRUCT *next_process, PCB_STRUCT *prev_process);
+
+extern PROCESS	Check_PS_Button_;
+extern PROCESS	main_task_;
+extern PROCESS	idle_led_;
+extern PROCESS  IntrHandler_;
+
+
+XGpioPs Gpio;
+XGpioPs_Config *GpioConfigPtr;
+
+XScuWdt WdtInstance;
+
+U32		IrqWdt;
+U32     counter = 0;
+U32     ButtonPressed;
+
+
+#define delay_loop  100000000
+/* Signal selection arrays for reeceive() or receive_w_tmo() */
+static SIGSELECT wait_for_start[]=					{1, SIG_START};
+#define sig_test_interrupt                                 100
+static SIGSELECT test_interrupt[]=                  {1, sig_test_interrupt};
+
+
+
+static S32 XGpioPs_device_driver_setup(XGpioPs *GpioInstancePtr, U16 DeviceId)
+{
+	S32 Status;
+	GpioConfigPtr = XGpioPs_LookupConfig(DeviceId);
+    if (NULL == GpioConfigPtr)
+    	{
+    		return(XST_FAILURE);
+    	}
+    Status = XGpioPs_CfgInitialize(GpioInstancePtr, GpioConfigPtr, GpioConfigPtr->BaseAddr);
+    if (Status != XST_SUCCESS)
+    	{
+    		return(XST_FAILURE);
+    	}
+    return Status;
+}
+
+
+#if (USE_AWDT == YES)
+static S32 ScuWdtSetup(XScuWdt * WdtInstancePtr, U16 DeviceId)
+{
+	S32 Status;
+	XScuWdt_Config *ConfigPtr;
+	ConfigPtr = XScuWdt_LookupConfig(DeviceId);
+	Status = XScuWdt_CfgInitialize(WdtInstancePtr, ConfigPtr, ConfigPtr->BaseAddr);
+	if (Status != XST_SUCCESS)         return(XST_FAILURE);
+	else
+	{
+		XScuWdt_LoadWdt(WdtInstancePtr, WDT_LOAD_VALUE);
+		XScuWdt_Start(WdtInstancePtr);
+			return XST_SUCCESS;
+			}
+}
+#endif
+
+
+
+
+
+void main_task(void)
+{
+	S32 Status = 0;
+	S32 Status_IntR;
+	IrqWdt = 0;
+
+	Status = uart_init(USB_UART_DEVICE_ID);
+	while (Status)
+		{
+		}
+
+	Status = ScuGicInterruptSetup(&IRQ_ControllerInstance, XPAR_PS7_SCUGIC_0_DEVICE_ID);
+	while (Status)
+		{
+		}
+
+	#if (USE_1ms_TICKS == YES)
+	Status = OsTimerIrqInit(&IRQ_ControllerInstance, &OSTimerInstance,	OS_TIMER_DEVICE_ID, XPAR_PS7_SCUTIMER_0_INTR, TIMER_VAL_1ms);
+	#else
+	Status = OsTimerIrqInit(&IRQ_ControllerInstance, &OSTimerInstance,	OS_TIMER_DEVICE_ID, XPAR_PS7_SCUTIMER_0_INTR, TIMER_VAL_10ms);
+	#endif
+	while (Status)
+		{
+		}
+
+	Status = XGpioPs_device_driver_setup(&Gpio, XPAR_XGPIOPS_0_DEVICE_ID);
+	while (Status)
+		{
+		}
+
+    INIT_LED;
+    XGpioPs_SetDirectionPin(&Gpio,Input_Pin,0);
+
+	#if (USE_SWDT == YES)
+		WATCH_DOG_INIT;
+	#endif
+
+	#if (USE_AWDT == YES)
+		Status = ScuWdtSetup(&WdtInstance, XPAR_SCUWDT_0_DEVICE_ID);
+		while (Status)
+			{
+			}
+	#endif
+
+
+    ///- start the Check_PS_Button
+	{
+	union SIGNAL *sig;
+	sig = alloc_nil(sizeof(struct START_SIGNAL_STRUCT), SIG_START);
+	send(&sig, Check_PS_Button_);
+	}
+
+
+
+	/*while (card_run_counter)
+		{
+			union SIGNAL *sig_2;
+			sig_2 = alloc_nil(100,   1);
+			sig -> sig_no = sig_test_interrupt;
+	    	if(XGpioPs_ReadPin(&Gpio, Input_Pin) == 0)
+	    		{
+	    			sig_2 = alloc_nil(100,   sig_test_interrupt);
+	    		}
+	    	else
+	    		{
+
+	    			send(&sig_2, IntrHandlerInputPin_);
+	    			sig_2 = receive_w_tmo((OSTIME)0,test_interrupt);
+	    		}
+		}
+*/
+
+
+	/*Status_IntR = IntrHandlerInputPin(&IRQ_ControllerInstance, &Gpio, GPIO_INTERRUPT_ID);
+	if (Status_IntR == XST_SUCCESS)
+		{
+			xil_printf("\r\nInterrupt is enabled !");
+		}
+	else
+		{
+			xil_printf("\r\nInterrupt is failed!");
+		}
+*/
+
+
+
+
+	for EVER
+    	{
+		xil_printf("\r\nMainTask loop: %i", card_run_counter);
+		delay(100);
+
+
+
+    	}
+
+}
+
+
+
+S32  EthXmtTestCnt = 0;
+void idle_led(void)
+{
+	U32 Cnt = 0;
+	for EVER
+		{
+		delay(1);
+		WATCH_DOG_RESET;
+		Cnt ++;
+		if (0 == (Cnt % 222))
+			{
+			xil_printf("\r\n        idle_led  %i", Cnt);
+			}
+		}
+}
+
+
+U32 UserErrorHandler (U32 *Ptr)
+{
+	ERR_STRUCT *ErrMsg = (ERR_STRUCT *) Ptr;
+	if(ErrMsg->ERRORNUMBER < FIRST_USER_ERROR)
+	{
+		return(1);
+	}
+	else
+	{
+		return(0);
+	}
+}
+
+U32 UserSwapHandler (PCB_STRUCT *next_process, PCB_STRUCT *prev_process)
+{
+	#if ( USE_OS_STATISTIK == YES)
+	OsStat_SwapHandler(next_process, prev_process);
+	#endif
+	return(0);
+}
+
+
+/*	Check_PS_Button						*********************************************************/
+/**
+* @brief	It turns on the LED every four button pushes by checking the modulo of the PS Button counter.
+* The modulo function gives the remainder of the division of two numbers
+* @param	[in] none
+* @return	None
+*********************************************************************************************/
+
+void Check_PS_Button (void)
+{
+	union SIGNAL *sig;
+	U32 	Current_State; // Current state of the  PS button
+	U32 	Button_Counter = 1; // Counter for the number of PS button presses
+
+	///- wait for start from extern
+	sig = receive(wait_for_start);
+	free_buf(&sig);
+
+	xil_printf("\r\nCheck_PS_Button start up: %i", card_run_counter);
+	/// initialization the PS Button Pin
+	XGpioPs_SetDirectionPin(&Gpio,Input_Pin,0);
+	for EVER
+		{
+		xil_printf("\r\nCheck_PS_Button loop: %i", card_run_counter);
+		//
+		Current_State = XGpioPs_ReadPin(&Gpio, Input_Pin);
+		if (Current_State == 0)
+			{
+			xil_printf("\r\n   PS Button State : LOW");
+			// Write the value of the LED Pin ( Pin_LED0 - red, Pin_LED1 - green). The Led is off.
+			XGpioPs_WritePin(&Gpio, Pin_LED0, 0);
+
+			}
+		else
+			{
+			xil_printf("\r\n   PS Button State : HIGH ");
+			//Count the number of PS button presses
+			Button_Counter++ ;//Button_Counter = Button_Counter+1;
+			xil_printf("\r\n [total] Button has pressed %i ",Button_Counter);
+
+			/*Turns on the LED every two PS Button pushes by checking the value of the PS Button push counter.
+			 *The function gives the remainder of the division of two numbers */
+			if (Button_Counter % 2 == 0)
+				{
+				xil_printf("\r\n  LED has toggled");
+				xil_printf("\r\n  Button has pressed %i ",Button_Counter);
+				// Write the value of the LED Pin ( Pin_LED0 - red, Pin_LED1 - green). The Led is on.
+				//XGpioPs_WritePin(&Gpio, Pin_LED0, 1);
+
+				union SIGNAL *sig_2;
+				sig_2 = alloc_nil(100,1);
+				sig_2 -> sig_no = sig_test_interrupt;
+				send(&sig_2, IntrHandler_);
+				//sig_2 = receive_w_tmo((OSTIME)5,test_interrupt);
+				}
+
+
+			}
+		delay(55);
+		}
+}
+
+//void IntrHandler(void *CallBackRef)// U32 Bank, U32 Status)
+void IntrHandler(void)
+{
+	union SIGNAL *sig_2;
+	//xil_printf("\r\nThe process Check_PS_Button_ is stopped!");
+	//stop(Check_PS_Button_);
+	sig
+	/*if (receive(&sig2, test_interrupt))
+		{
+
+		}
+		*/
+	xil_printf("\r\n[IntrHandler]The current state of the PS Button is HIGH!");
+	xil_printf("\r\nThe Signal is received!");
+    xil_printf("\r\nIntrHandler function!");
+	//XGpioPs *Gpio = (XGpioPs *)CallBackRef;
+
+	switch(counter)
+			{
+				case 0:
+					xil_printf("\r\nToggle the status of the Red LED");
+					XGpioPs_WritePin(&Gpio, Pin_LED0,  0x01);
+					XGpioPs_WritePin(&Gpio, Pin_LED1,  0x00);
+					break;
+				case 1:
+					xil_printf("\r\nToggle the status of the Green LED");
+					XGpioPs_WritePin(&Gpio, Pin_LED0,  0x00);
+					XGpioPs_WritePin(&Gpio, Pin_LED1,  0x01);
+					break;
+					case 2:
+					xil_printf("\r\nToggle the status of the Red and Green LEDs");
+					XGpioPs_WritePin(&Gpio, Pin_LED0,  0x01);
+					XGpioPs_WritePin(&Gpio, Pin_LED1,  0x01);
+					break;
+				case 3:
+					xil_printf("\r\nThe status of the Red and Green LEDs is OFF");
+					XGpioPs_WritePin(&Gpio, Pin_LED0,  0x00);
+					XGpioPs_WritePin(&Gpio, Pin_LED1,  0x00);
+					break;
+			}
+			if(counter<3)
+				{
+					counter++;
+				}
+			else
+				{
+					counter=0;
+				}
+	//start(Check_PS_Button_);
+}
+
+
+
+
+
+
+int IntrHandlerInputPin(XScuGic *GicInstancePtr, XGpioPs *Gpio, U16 GpioIntrId)
+{
+	S32 Status;
+	XScuGic_Config *IntcConfig;
+	Xil_ExceptionInit();
+	// Initialization the interrupt controller driver
+	IntcConfig = XScuGic_LookupConfig(INTC_DEVICE_ID);
+	if (NULL == IntcConfig)
+		{
+			return XST_FAILURE;
+		}
+	Status = XScuGic_CfgInitialize(GicInstancePtr, IntcConfig, IntcConfig->CpuBaseAddress);
+	if (Status == XST_SUCCESS)
+		{
+			xil_printf("\r\nXScuGic configuration successful!");
+		}
+	else
+		{
+	    	xil_printf("\r\nXScuGic configuration failed!");
+	    }
+
+	Xil_ExceptionRegisterHandler(XIL_EXCEPTION_ID_INT, (Xil_ExceptionHandler)XScuGic_InterruptHandler, GicInstancePtr);
+	/*Connect the device driver handler that will be called when an interrupt for the device occurs,
+	 * the handler defined in the function “ScuGicInterruptSetup”  performs the specific interrupt processing.
+	 * for the device.
+	 */
+	Status = XScuGic_Connect(GicInstancePtr, GpioIntrId, (Xil_ExceptionHandler)IntrHandler, (void *)Gpio);
+	// XST_SUCCESS if the function has completed successfully
+	if (Status == XST_SUCCESS)
+		{
+		xil_printf("\r\nInterrupt handler connection successful!");
+		}
+	else
+		{
+		xil_printf("\r\nInterrupt handler connection failed!");
+		}
+	// Enable the level edge interrupt of all pins in GPIO Bank. The PS Button Pin (0) we set the rising edge interrupt.
+	XGpioPs_SetIntrTypePin(Gpio, Input_Pin, XGPIOPS_IRQ_TYPE_EDGE_RISING);
+	// Set up the handler of GPIO Interrupt. “IntrHandler” is the interrupt handler function.
+	XGpioPs_SetCallbackHandler(Gpio, (void *)Gpio, IntrHandler);
+	// Enable the GPIO Interrupts of PS Button Pin.
+	XGpioPs_IntrEnablePin(Gpio, Input_Pin);
+	// Disable the interrupts
+	XGpioPs_IntrDisable(Gpio,0x01,0xFFFFFFFF);  //XGpioPs_IntrDisable(Gpio,0x01,1);
+	// Enable the interrupt for the device and then cause the interrupt so the handlers will be called.
+	XScuGic_Enable(GicInstancePtr, GpioIntrId);
+	// Enable interrupts in the Processor.
+	Xil_ExceptionEnableMask(XIL_EXCEPTION_IRQ);
+	return(XST_SUCCESS);
+}
+
+/*static S32 SetupInterruptSystem(XScuGic *GicInstancePtr, XGpioPs *Gpio, u16 GpioIntrId)
+	S32 Status;
+	XScuGic_Config *IntcConfig;
+	Status = XScuGic_Connect(GicInstancePtr, GpioIntrId, (Xil_ExceptionHandler)IntrHandler, (void *)Gpio);
+	// XST_SUCCESS if the function has completed successfully
+	if (Status == XST_SUCCESS)
+		{
+		xil_printf("\r\nInterrupt handler connection successful!");
+		}
+	else
+		{
+		xil_printf("\r\nInterrupt handler connection failed!");
+		}
+	// Enable the level edge interrupt of all pins in GPIO Bank. The PS Button Pin (0) we set the rising edge interrupt.
+	XGpioPs_SetIntrTypePin(Gpio, Input_Pin, XGPIOPS_IRQ_TYPE_EDGE_RISING);
+	// Set up the handler of GPIO Interrupt. “IntrHandler” is the interrupt handler function.
+	XGpioPs_SetCallbackHandler(Gpio, (void *)Gpio, IntrHandler);
+	// Enable the GPIO Interrupts of PS Button Pin.
+	XGpioPs_IntrEnablePin(Gpio, Input_Pin);
+	// Disable the interrupts
+	XGpioPs_IntrDisable(Gpio,0x01,0xFFFFFFFF);  //XGpioPs_IntrDisable(Gpio,0x01,1);
+	// Enable the interrupt for the device and then cause the interrupt so the handlers will be called.
+	XScuGic_Enable(GicInstancePtr, GpioIntrId);
+	// Enable interrupts in the Processor.
+	Xil_ExceptionEnableMask(XIL_EXCEPTION_IRQ);
+	return(XST_SUCCESS);
+
+
+ */
+
