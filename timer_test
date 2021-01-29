@@ -1,0 +1,13 @@
+#include "xparameters.h"
+#include "xtime_l.h"
+
+uint32_t millis(void)
+{
+	XTime tCurrent;
+//	unsigned int millis = ~TMR_MILLIS;
+  XTime_GetTime(&tCurrent);
+  u32 micros =  1.0 * (tCurrent) / (COUNTS_PER_SECOND/1000000L);
+  u32 millis = micros/1000;
+  //printf("Output took %d ms.\n",millis);
+	return millis;
+}
