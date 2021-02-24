@@ -1,0 +1,126 @@
+%% test 
+% generate a signal
+%funtion[] = symbol_genearator()
+%% Initialisation
+% define a vector with the size of constellations
+size_of_signal_constellation = [2 4 8 16];
+% define a vector with the phase offsets
+phase_offset_const = [-0.2 0 0.2];
+% initial parameters of the simulation
+number_of_symbols = 32;
+number_of_samples = 4;
+number_of_bits  =  number_bits_per_symbol * number_of_samples;
+
+type_of_input_data = input('Enter a number: ');
+
+switch type_of_input_data
+    case 1
+        disp('data : random data +1 or -1')
+        data_binary = 
+    case 2
+        disp(' data : CW carrier')
+        data_binary = ones(1,number_of_bits);
+    otherwise
+        disp('data : 01010101')
+        data_binary = randi([0 1], number_of_bits, 1);    
+end
+%% Generate a binary data stream as a column vector (random)
+
+% create a vector of zeros
+% data_binary = zeros(number_of_bits,1);
+% a = zeros(1, n); a(1:2:end) = 1;
+%% Plot the binara data stream data_binary
+% stem(data_binary,'filled');
+% title('Random Bits');
+% xlabel('Index');
+% ylabel('Binary Value');
+
+%% Simulation
+% Loop: different constellations
+for i = 1:length(size_of_signal_constellation)
+    number_bits_per_symbol = log2(size_of_signal_constellation(i));
+    % Loop : different phase offsets
+    for j = 1: length(phase_offset_const)
+        %% Reshape the binary data stream vector. New size is [length(data_out)/number_bits_per_symbol,  number_bits_per_symbol]
+        %data_out_matrix =  zeros(length(data_out)/number_bits_per_symbol,number_bits_per_symbol);
+        data_binary_matrix = reshape(data_binary,length(data_binary)/number_bits_per_symbol,number_bits_per_symbol);  
+        %% Convert to integer
+        %%data_symbols_in_convert_to_integer = bi2de(data_out_matrix);       
+        %data_symbols_convert_to_integer = convert_bin_to_decimal(data_out_matrix);       
+        data_symbols_convert_to_integer = b2d(data_out_matrix);  
+        %% Plot the random symbols
+        % figure; 
+        % stem(data_symbols_convert_to_integer);
+        % title('Random Symbols');
+        % xlabel('Index');
+        % ylabel('Integer Value');
+        %% Modulation
+        %phase_offset_const = comm.PhaseFrequencyOffset('PhaseOffset',2);
+        %%data_mod = qammod(data_symbols_convert_to_integer,size_of_signal_constellation(i),'bin');       
+        data_mod = qammod(data_symbols_convert_to_integer,size_of_signal_constellation(i),phase_offset_const(j),'bin');   
+        %data_with_offset = phase_offset_const(data_mod);
+        %avgPower = mean(abs(data_mod).^2)
+        %% Plot the costellations
+        figure;
+        subplot(1,2,1);
+        scatterplot(data_mod);
+        title(' Original Constellation')
+        subplot(1,2,1);
+        scatterplot(data_with_offset);
+        title('Constellation after phase offset')
+
+        
+        
+        %% Noise
+        % noise power
+        noise_power = 10;
+        % signal noise ratio
+        SNR = noise_power + 10*log10(number_bits_per_symbol) - 10*log10(number_samples_pre_symbol);
+        % Generate the data with noise
+        data_with_noise = awgn(data_mod,SNR,'measured');
+        %% Plot 
+        sPlotFig = scatterplot(data_with_noise,1,0,'g.');
+        hold on;
+        scatterplot(data_mod,1,0,'k*',sPlotFig);
+        
+        %% Simulation 2
+        
+        symb_block = reshape (data_with_offset,number_of_samples,number_of_symbols);
+        
+        
+        %% Simulation 3
+        N = 16;
+        up_data=zeros(1,N*m);
+        up_data(1:N:N*m) = data;
+        
+        
+    end % phase offsets
+    
+    
+end % costellation sizes
+
+%% Test_ draft
+delta = 0.1; % ?!!!!
+% for In Phase
+in_phase_early_sample = in_phase_signal(center - delta);
+in_phase_middle_sample = in_phase_signal(center);
+in_phase_late_sample = in_phase_signal(center + delta);
+
+in_phase_save_sample = in_phase_early_sample;
+in_phase_subtraction = in_phase_late_sample - in_phase_early_sample;
+
+% for Q
+    
+quadrature_early_sample = quadrature_signal(center - delta);
+quadrature_middle_sample = quadrature_signal(center);
+quadrature_late_sample = quadrature_signal(center + delta);
+
+quadrature_save_sample = quadrature_early_sample;
+quadrature_subtraction = quadrature_late_sample - quadrature_early_sample;
+
+% error detection
+
+
+
+
+
