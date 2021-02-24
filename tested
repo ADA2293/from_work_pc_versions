@@ -1,0 +1,45 @@
+clear all;
+close all;
+
+%% Generate random bit stream
+% Ssize  of signal constelation
+M = 2;
+% Number of bits per symbol
+bits_symbol= log2(M); 
+% Number of bits [total]
+N = 14000; 
+% Phase offsets
+phase_offset_const = -0.2;
+samples = 4;
+snr = 10;
+type_of_input_data = input('Enter a number: ');
+
+switch type_of_input_data
+    case 1
+        disp('data : random data +1 or -1')
+           binary_data = rand(1,M) > 0,5;
+        data_binary = 2.*binary_data - 1;
+    case 2
+        disp(' data : CW carrier')
+        data_binary = ones(1,number_of_bits);
+    otherwise
+        disp('data : 01010101')
+        n=10;
+        data_binary = repmat([1 0],1,n)    
+end
+
+%% Plot the binara data stream data_binary
+% stem(data_binary,'filled');
+% title('Random Bits');
+% xlabel('Index');
+% ylabel('Binary Value');
+
+%% Simulation
+% bit-to-symbol mapping
+% reshape data into binary "bits_symbol"-tubples, bits_symbol=log2(M)
+data_matrix = reshape(data_binary,length(data_binary)/bits_symbol,bits_symbol);
+% convert to integers
+data_symbols = bi2de(data_matrix); % Convert to integers
+% apply modulation
+data_symbols_mod = qammod(data_symbols,M,phase_offset_const,'bin'); % binary coding
+data_rx = awgn(data_symbols_mod,snr, 'measured');
